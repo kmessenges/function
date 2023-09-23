@@ -1,0 +1,247 @@
+from __future__ import division
+from RpiMotorLib import RpiMotorLib
+
+import cv2
+import threading
+import time
+import Adafruit_PCA9685
+
+
+shared_face_coords = None
+coord_lock = threading.Lock()
+
+
+
+def display_video():#안면인식 관련 함수1
+    while True:
+        result, video_frame = video_capture.read()
+        if result is False:
+            break
+
+        tracked_face_coords = track_last_detected_face(video_frame)
+        global shared_face_coords
+
+        with coord_lock:
+            shared_face_coords = tracked_face_coords
+
+        if tracked_face_coords is not None:
+            x, y, w, h = tracked_face_coords
+            cv2.rectangle(video_frame, (x, y), (x + w, y + h), (0, 255, 0), 4)
+
+        cv2.imshow("Tracked Face", video_frame)
+
+        if cv2.waitKey(1) & 0xFF == ord("q"):
+              # 프로그램 종료 시 중립 위치로 이동
+            video_capture.release()
+            cv2.destroyAllWindows()
+            break
+
+
+def update_tracked_face(new_face):#안면인식 관련 함수2
+    global tracked_face
+    if new_face is not None:
+        tracked_face = new_face
+
+def track_last_detected_face(vid):#안면인식 관련 함수3
+    global tracking_count
+    gray_image = cv2.cvtColor(vid, cv2.COLOR_BGR2GRAY)
+    faces = face_classifier.detectMultiScale(gray_image, 1.1, 5, minSize=(40, 40))
+    
+    # 기존 추적 얼굴을 업데이트
+    update_tracked_face(tracked_face)
+    
+    if len(faces) > 0:
+        last_detected_face = faces[-1]
+        update_tracked_face(last_detected_face)
+        tracking_count = tracking_threshold  # 새 얼굴이 감지되면 추적 카운트 초기화
+    else:
+        if tracking_count > 0:
+            tracking_count -= 1
+        else:
+            update_tracked_face(None)  # 추적 카운트가 0이면 추적 해제
+
+    return tracked_face            
+
+def stepm(turn,range):
+    GPIO_pins=(14,15,18)
+    direction=20
+    step=21
+    mymotortest=RpiMotorLib.A4988Nema(direction,step,GPIO_pins,"A4988")
+    mymotortest.motor_go(turn,'Full',range,.007,False,.05)
+    t=range/200
+    time.sleep(t)
+        
+def motor_control():
+    angle0 = 97
+    angle1 = 18
+    angle2 = 18
+    angle2_want = None
+    current_state = 4
+    next_state = None
+    a = 90 -angle2
+    b = angle1 - 90
+    r = angle0 - 90
+    time.sleep(3)
+    while True:
+        # 얼굴 좌표를 읽어옴
+        global shared_face_coords
+        with coord_lock:
+            face_coords = shared_face_coords
+            if face_coords is not None:
+                x, y, w, h = face_coords
+                face_coord_x = -frame_w/2 + (x + w/2)
+                face_coord_y = -(y + h/2 - frame_h/2)
+            
+                face_distnace =  w*h
+                if face_coord_x >15:
+                    stepm(1,10)
+                elif face_coord_x <-15:
+                    stepm(0,10)
+                else:
+                    stepm(0,0)
+
+                if face_distnace > 14000:
+                    angle2_want = 0
+                    next_state = 3
+                
+            
+                elif 6000 < face_distnace < 14000: 
+                    angle2_want = 45
+                    next_state = 4
+            
+                elif face_distnace < 6000:
+                    angle2_want = 80
+                    next_state = 6
+            
+                angle0 = 90-angle2+angle1
+            
+                if current_state == next_state:
+                    pass
+                else:
+                    mode_change_with_servo0_ver2(2, angle0, angle1, angle2, angle2_want)
+                    angle2 = angle2_want
+                    angle1 = angle0 + angle2_want-90
+                    current_state = next_state
+
+
+                if face_coord_y > 15:
+                    angle1 = min(135, angle1 +5)
+                
+                elif face_coord_y < -15:
+                    angle1 = max(0, angle1 - 5)
+                
+                else:
+                    pass
+            
+                angle0 = 90-angle2+angle1
+
+                if angle1 <= 0 or angle1 >=135:
+                    pass
+                else:    
+                    set_angle(0, angle0)
+                    set_angle(1, angle1)
+                    time.sleep(0.05)     
+
+            else: 
+                time.sleep(1)
+                print("no person")
+            
+
+        
+        
+            
+def start_position():
+    pwm.set_pwm(0, 0, 420)
+    pwm.set_pwm(1, 0, 200)
+    pwm.set_pwm(2, 0, 200)
+
+                    
+def set_angle(channel, degree):
+    pwm_angle = int(150+25/9*degree)
+    if pwm_angle >=640:
+        pwm_angle = 640
+    elif pwm_angle<=150:
+        pwm_angle = 150
+    pwm.set_pwm(channel, 0, pwm_angle)
+    
+def mode_change(channel, angle, change, k):
+    for i in range(angle-change, angle, k):
+        set_angle(channel, i)
+        time.sleep(0.05)
+
+def mode_change_with_servo0(channel,angle0, angle1, angle2_current, angle2_next, time1):
+    step = int(time1//0.05)
+    step_angle = (angle2_next - angle2_current)/step
+
+    angle0_next = 90-angle2_next+angle1
+    angle0_step_angle = (angle0_next - angle0)/step
+
+    if angle2_next == 0:
+        
+        for i in range(1,step+1):
+            set_angle(channel, angle2_current+i*step_angle)
+            set_angle()
+            set_angle()
+            time.sleep(0.05)
+        
+        pass
+    else:
+        
+        for i in range(1,step+1):
+            set_angle(channel, angle2_current+i*step_angle)
+            set_angle(0, angle0+i*angle0_step_angle)
+            time.sleep(0.05)
+        
+
+    
+def mode_change_with_servo0_ver2(channel,angle0, angle1, angle2_current, angle2_next):
+    angle0_next = 90-angle2_next+angle1
+    angle1_next = angle0 + angle2_next-90
+    
+    if angle2_next == 0:
+        angle0_next = 90-angle2_next+45
+        for i, j  in zip(range(angle2_current, angle2_next, -1 if angle2_current>angle2_next else 1 ),
+                range(angle1, angle1_next, -1 if angle1>angle1_next else 1 )):
+            set_angle(channel, i)
+            set_angle(1, j)
+            time.sleep(0.04)
+    else:
+        for i, j in zip(range(angle2_current, angle2_next, -1 if angle2_current>angle2_next else 1 ),
+            range(angle0, angle0_next, -1 if angle0>angle0_next else 1 )):
+            set_angle(channel, i)
+            set_angle(0, j)
+            time.sleep(0.04)
+                
+    
+    
+
+
+# PWM 초기화
+pwm = Adafruit_PCA9685.PCA9685()
+pwm.set_pwm_freq(60)
+
+# step
+
+
+
+face_classifier = cv2.CascadeClassifier(
+    cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+)
+
+frame_w = 480
+frame_h = 320
+video_capture = cv2.VideoCapture(0)
+video_capture.set(cv2.CAP_PROP_FRAME_WIDTH, frame_w)
+video_capture.set(cv2.CAP_PROP_FRAME_HEIGHT, frame_h)
+
+tracked_face = None
+tracking_threshold = 10  # 연속 추적을 위한 프레임 수
+tracking_count = 0
+
+video_thread = threading.Thread(target=display_video)
+video_thread.start()
+
+start_position()  # 프로그램 시작 시 중립 위치로 이동
+
+motor_thread = threading.Thread(target=motor_control)
+motor_thread.start()
