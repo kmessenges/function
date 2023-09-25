@@ -1,13 +1,20 @@
-from __future__ import division
-from RpiMotorLib import RpiMotorLib
+from __future__ import division          
+from RpiMotorLib import RpiMotorLib         
+from pynput import keyboard
 
 import cv2
 import threading
 import time
 import Adafruit_PCA9685
 
-
+#초기값 설정
 shared_face_coords = None
+manual_mode = 1
+manual_x = 0
+manual_y = 0
+manual_a0 = 0
+manual_a1 = 0
+manual_a2 = 0
 coord_lock = threading.Lock()
 
 
@@ -31,7 +38,7 @@ def display_video():#안면인식 관련 함수1
         cv2.imshow("Tracked Face", video_frame)
 
         if cv2.waitKey(1) & 0xFF == ord("q"):
-              # 프로그램 종료 시 중립 위치로 이동
+              # 카메라 사용 종료
             video_capture.release()
             cv2.destroyAllWindows()
             break
@@ -75,23 +82,31 @@ def motor_control():
     angle0 = 97
     angle1 = 18
     angle2 = 18
+    a0 = 97
+    a1 = 18
+    a2 = 18
     angle2_want = None
     current_state = 4
     next_state = None
+    global manual_mode,manual_x, manual_y,manual_a0, manual_a1, manual_a2
     a = 90 -angle2
     b = angle1 - 90
     r = angle0 - 90
     time.sleep(3)
+    
     while True:
-        # 얼굴 좌표를 읽어옴
-        global shared_face_coords
-        with coord_lock:
-            face_coords = shared_face_coords
+            
+        if manual_mode == 1:
+            # 자동모드 실행
+            global shared_face_coords
+            with coord_lock:
+                face_coords = shared_face_coords
+            
             if face_coords is not None:
                 x, y, w, h = face_coords
                 face_coord_x = -frame_w/2 + (x + w/2)
                 face_coord_y = -(y + h/2 - frame_h/2)
-            
+                
                 face_distnace =  w*h
                 if face_coord_x >15:
                     stepm(1,10)
@@ -103,36 +118,38 @@ def motor_control():
                 if face_distnace > 14000:
                     angle2_want = 0
                     next_state = 3
+                    
                 
-            
                 elif 6000 < face_distnace < 14000: 
                     angle2_want = 45
                     next_state = 4
-            
+                
                 elif face_distnace < 6000:
                     angle2_want = 80
                     next_state = 6
-            
+                
                 angle0 = 90-angle2+angle1
-            
+                
                 if current_state == next_state:
                     pass
                 else:
+                    #모드 변경을 위한 각도 계산 함수
                     mode_change_with_servo0_ver2(2, angle0, angle1, angle2, angle2_want)
                     angle2 = angle2_want
                     angle1 = angle0 + angle2_want-90
                     current_state = next_state
 
-
+                
+                
                 if face_coord_y > 15:
                     angle1 = min(135, angle1 +5)
-                
+                    
                 elif face_coord_y < -15:
                     angle1 = max(0, angle1 - 5)
-                
+                    
                 else:
                     pass
-            
+                
                 angle0 = 90-angle2+angle1
 
                 if angle1 <= 0 or angle1 >=135:
@@ -145,15 +162,101 @@ def motor_control():
             else: 
                 time.sleep(1)
                 print("no person")
+                
+        #수동 모드
+        elif manual_mode == 2:
             
+            if manual_x == 1:
+                stepm(1,10)
+                
+            elif manual_x == -1:
+                stepm(0,10)
+                
+            if manual_a0 == 1:
+                time.sleep(0.1)
+                set_angle(0,a0-5)
+                a0=a0-5
+            elif manual_a0 ==-1:
+                time.sleep(0.1)
+                set_angle(0,a0+5)
+                a0=a0+5
+            if manual_a1 == 1:
+                time.sleep(0.1)
+                set_angle(1,a1+4)
+                a1=a1+4
+                print(a1)
+            elif manual_a1 == -1:
+                time.sleep(0.1)
+                set_angle(1,a1-4)
+                a1=a1-4
+                print(a1)
+            if manual_a2 == 1:
+                time.sleep(0.1)
+                set_angle(2,a2-3)
+                a2=a2-3
 
+            elif manual_a2 == -1:
+                time.sleep(0.1)
+                set_angle(2,a2+3)
+                a2=a2+3
+            
         
+        elif manual_mode == 3:
+            print('end_program')
+            start_position()
+            break
         
+def on_press(key):
+    global manual_mode
+    global manual_x,manual_a0, manual_a1, manual_a2
+    global manual_y
+    try:
+        char_key = key.char
+        if char_key == 'z':
+            manual_mode = 1
+            print('Mode auto selected')
+        elif char_key == 'x':
+            manual_mode = 2
+            print('Mode manual selected')
+            start_position()
+            time.sleep(1)
+        elif char_key == 'c':
+            manual_mode = 3
+        elif char_key == 'q':
+            manual_x = 1
+        elif char_key == 'a':
+            manual_x = -1
+        elif char_key == 'w':
+            manual_a0 = 1
+        elif char_key == 's':
+            manual_a0 = -1
+        elif char_key == 'e':
+            manual_a1 = 1
+        elif char_key == 'd':
+            manual_a1 = -1
+        elif char_key == 'r':
+            manual_a2 = 1
+        elif char_key == 'f':
+            manual_a2 = -1
+    except AttributeError:
+        pass  
+def on_release(key):
+    global manual_x, manual_a0, manual_a1, manual_a2
+    global manual_y
+    manual_x = 0
+    manual_y = 0
+    manual_a0 = 0
+    manual_a1 = 0
+    manual_a2 = 0
+    pass               
+            
+               
             
 def start_position():
     pwm.set_pwm(0, 0, 420)
     pwm.set_pwm(1, 0, 200)
     pwm.set_pwm(2, 0, 200)
+    time.sleep(0.5)
 
                     
 def set_angle(channel, degree):
@@ -245,3 +348,8 @@ start_position()  # 프로그램 시작 시 중립 위치로 이동
 
 motor_thread = threading.Thread(target=motor_control)
 motor_thread.start()
+
+with keyboard.Listener(
+        on_press=on_press,
+        on_release=on_release) as listener:
+    listener.join()
