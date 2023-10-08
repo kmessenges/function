@@ -108,7 +108,7 @@ def motor_control():
                 face_coord_y = -(y + h/2 - frame_h/2)
                 
                 face_distnace =  w*h
-                if face_coord_x >75:
+                if face_coord_x >0:
                     stepm(1,3)
                     time.sleep(0.1)
                     print(face_coord_x)
@@ -133,7 +133,6 @@ def motor_control():
                         next_state = 3
                         angle2_want = 0
                     else:
-                        angle2_want = 45
                         pass
 
                 elif current_state == 6:
@@ -152,7 +151,7 @@ def motor_control():
                     pass
                 else:
                     #모드 변경을 위한 각도 계산 함수
-                    mode_change_with_servo0_ver2(2, angle0, angle1, angle2, angle2_want)
+                    mode_change_with_servo0_ver2(2, angle0, angle1, angle2, angle2_want=45)
                     angle2 = angle2_want
                     angle1 = angle0 + angle2_want-90
                     current_state = next_state
