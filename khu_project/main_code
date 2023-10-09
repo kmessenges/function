@@ -108,11 +108,11 @@ def motor_control():
                 face_coord_y = -(y + h/2 - frame_h/2)
                 
                 face_distnace =  w*h
-                if face_coord_x >0:
+                if face_coord_x >25:
                     stepm(1,3)
                     time.sleep(0.1)
                     print(face_coord_x)
-                elif face_coord_x <-75:
+                elif face_coord_x <-125:
                     stepm(0,3)
                     time.sleep(0.1)
                     print(face_coord_x)
