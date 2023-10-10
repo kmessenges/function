@@ -37,7 +37,7 @@ def display_video():#안면인식 관련 함수1
 
         cv2.imshow("Tracked Face", video_frame)
 
-        if cv2.waitKey(1) & 0xFF == ord("q"):
+        if cv2.waitKey(1) & 0xFF == ord("p"):
               # 카메라 사용 종료
             video_capture.release()
             cv2.destroyAllWindows()
